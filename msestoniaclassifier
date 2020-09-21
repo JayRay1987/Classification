@@ -1,0 +1,144 @@
+#load data set
+passengerdata <- read.csv('estonia-passengers.csv', header = TRUE, stringsAsFactors = FALSE)
+#data exploration
+#check the structure of the data
+str(passengerdata)
+#summary of data
+summary(passengerdata)
+#check some of the rows
+head(passengerdata)
+#oldest person on board
+max(passengerdata$Age)
+#youngest person on board
+min(passengerdata$Age)
+#split of Survived
+table(passengerdata$Survived)
+#0 is No, 1 is Yes
+passengerdata$Survived <- factor(passengerdata$Survived, levels = c(0,1), labels = c("No", "Yes"))
+#percentage of Survived
+round(prop.table(table(passengerdata$Survived))*100, digits = 1)
+#Distribution of survival with barplot.
+barplot(table(passengerdata$Survived),main ="Distribution of Survival", ylab="Frequency")
+#check the different nationalities
+table(passengerdata$Country)
+#factor the Country
+passengerdata$Country <- as.factor(passengerdata$Country)
+#numbers of passenger category
+table(passengerdata$Category)
+#factor the category of passenger
+passengerdata$Category <- factor(passengerdata$Category, levels = c("P","C"), labels = c("Passenger", "Crew"))
+#plot the numbers
+plot(passengerdata$Category)
+#remove id, firstname and surname, these aren't needed
+passengerdata <- passengerdata[c(-1,-3, -4)]
+#let's check split between male and female
+table(passengerdata$Sex)
+passengerdata$Sex <- factor(passengerdata$Sex, levels = c("M","F"), labels = c("Male", "Female"))
+#486 females to 503 males
+#feature engineer new column
+passengerdata$Child[passengerdata$Age < 18] <- "Yes"
+passengerdata$Child[passengerdata$Age >= 18] <- "No"
+passengerdata$Child <- factor(passengerdata$Child)
+#bin the ages
+passengerdata$AgeCate <- cut(passengerdata$Age,
+                              breaks = c(min(passengerdata$Age),30,60,max(passengerdata$Age)),                    
+                              labels=c("Young","Middle-aged","Old"))
+passengerdata$AgeBinned <- cut(passengerdata$Age,
+                             breaks = c(min(passengerdata$Age),10,20,30,40,50,60,70,max(passengerdata$Age)),
+                             labels=c("0-10","10-20","20-30","30-40","40-50","50-60","60-70","70+"))
+#check frequency of age category
+plot(passengerdata$AgeCate)
+#check frequency of agebinned
+plot(passengerdata$AgeBinned)
+#check agebinned numbers
+table(passengerdata$AgeBinned)
+#a lot of passengers between 40-50, 204 to be precise.
+#check age as an indicator of survival
+table(passengerdata$AgeBinned[passengerdata$Survived == "Yes"])
+table(passengerdata$AgeBinned[passengerdata$Survived == "No"])
+#plot the passenger data
+plot(passengerdata$AgeBinned[passengerdata$Survived == "Yes"])
+plot(passengerdata$AgeBinned[passengerdata$Survived == "No"])
+#average age overall
+mean(passengerdata$Age)
+#subset on survives or not
+pass_death <- subset(passengerdata, Survived == "No")
+pass_survived <- subset(passengerdata, Survived == "Yes")
+plot(pass_death$AgeBinned)
+plot(pass_survived$AgeBinned)
+#average age of those who died
+mean(pass_death$Age)
+#average age of those who survived
+mean(pass_survived$Age)
+#install package
+install.packages("ggridges")
+#load packages
+library(ggplot2)
+library(ggridges)
+#produce the visual
+options(repr.plot.width = 13, repr.plot.height = 6)
+ggplot(data = passengerdata, mapping = aes(x = Age, y = Survived)) +
+  geom_density_ridges(mapping = aes(fill =Survived), bandwidth = 4.07, alpha = .6, size = 1) +
+  theme_minimal() +
+  xlab("Age") +
+  ylab("") +
+  ggtitle("Age distribution in relation to surviving and dead passengers") +
+  theme(
+    plot.title = element_text(size = 20, face = "bold.italic", vjust = 2, hjust = .4),
+    axis.title.x = element_text(size = 20, face = "bold"),
+    axis.text.x = element_text(size = 20, face = "bold"),
+    axis.text.y = element_text(size = 17, face = "bold"),
+    legend.position = "none")
+#check the sex in age_death and age_survived
+table(pass_death$Sex)
+#not much difference in the number died between sexes.
+table(pass_survived$Sex)
+#a lot more males survived, out of the survived numbers.
+barplot(table(pass_survived$Sex))
+install.packages("caret")
+#load caret and e1071
+library(caret)
+library(e1071)
+#create a sample index
+index <- sample(1:dim(passengerdata)[1], dim(passengerdata)[1] * .75, replace=FALSE)
+#from randomly sampled index create training and testing sets
+training <- passengerdata[index, ]
+testing <- passengerdata[-index, ]
+#first, let's build the Naive Bayes model
+nb <- naiveBayes(Survived ~ Country + Category + Sex + + AgeBinned + AgeCate, training)
+nb
+#test model against unseen data
+nbPredict <- predict(nb, newdata = testing[,-5])
+#produce the confusion matrix
+caret::confusionMatrix(testing$Survived, nbPredict, positive ="Yes")
+#load gmodels
+library(gmodels)
+#produce the CrossTable
+CrossTable(x = nbPredict, y = testing$Survived, prop.chisq = FALSE, prop.r = FALSE, prop.c = FALSE, dnn = c('predicted', 'actual'))
+#try decision tree and rule based learner next.
+#Train the JRip model
+library(RWeka)
+passenger_JRip <- JRip(Survived ~ AgeBinned, data = training)
+#check the passenger_JRip
+passenger_JRip
+#only one rule found. Hmm this isn't going to work.
+passenger_JRip_pred <- predict(passenger_JRip, testing)
+library(gmodels)
+CrossTable(testing$Survived, passenger_JRip_pred, prop.r = FALSE, prop.c = FALSE, prop.chisq = FALSE)
+#didn't work!
+#decision tree
+#load package
+library(C50)
+passenger_dt_model <- C5.0(x = training[,-5], y = training$Survived, trials = 3)
+plot(passenger_dt_model)
+passenger_dt_model
+#summary the credit model
+summary(passenger_dt_model)
+#create predict vector
+passenger_pred <- predict(passenger_dt_model, testing)
+#load the gmodels
+library(gmodels)
+#check the results
+CrossTable(testing$Survived, passenger_pred, prop.chisq = FALSE, prop.c = FALSE, prop.r = FALSE, dnn = c('actual default', 'predicted default'))
+#terrible results. why doesn't it work?
+#Rule based and decision tree algos don't work.
